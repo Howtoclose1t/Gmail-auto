@@ -16,7 +16,7 @@ The app is designed to keep email content on your machine. It uses the Gmail API
 
 ## Privacy Notes
 
-Do not commit any local OAuth or runtime files. The included `.gitignore` excludes the expected private files:
+Private files:
 
 - `credentials.json`
 - `token.json`
@@ -24,7 +24,17 @@ Do not commit any local OAuth or runtime files. The included `.gitignore` exclud
 - `.env`
 - `data/`
 
-You still need to create your own `credentials.json` locally from a Google Cloud Desktop OAuth client before running the app.
+You need to create your own `credentials.json` locally from a Google Cloud Desktop OAuth client before running the app.
+
+### How These Files Are Created
+
+- `credentials.json`: downloaded manually from Google Cloud Console after you create a Desktop OAuth client. Save the downloaded file in the project root and rename it to `credentials.json`.
+- `token_v2.json`: generated automatically the first time you run `gmail_auto_v2` and complete the browser-based Google authorization flow.
+- `token.json`: used by older or alternate local versions of the app. It is also generated automatically after OAuth authorization, if that version is run.
+- `.env`: optional. Create it manually only if you want to store local environment variables outside your shell profile.
+- `data/`: generated automatically when the app writes analysis output or push-notification state files.
+
+These files are intentionally ignored by Git because they may contain OAuth secrets, access tokens, account-specific configuration, or private email analysis output.
 
 ## Requirements
 

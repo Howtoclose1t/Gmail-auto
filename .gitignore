@@ -1,0 +1,30 @@
+﻿# Python caches and build output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE and local machine files
+.idea/
+.vscode/
+
+# Local secrets and OAuth tokens
+credentials.json
+credentials*.json
+token.json
+token_*.json
+token_v2.json
+.env
+.env.*
+
+# Runtime output
+data/
+*.log

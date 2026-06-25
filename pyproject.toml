@@ -1,0 +1,20 @@
+﻿[project]
+name = "gmail-auto-v2"
+version = "0.1.0"
+description = "Local Gmail email classifier and desktop notifier using the Gmail API and Ollama."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "google-api-python-client>=2.140.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-cloud-pubsub>=2.21.0",
+    "PyQt5>=5.15.10",
+    "requests>=2.32.0",
+]
+
+[project.scripts]
+gmail-auto-v2 = "gmail_auto_v2.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

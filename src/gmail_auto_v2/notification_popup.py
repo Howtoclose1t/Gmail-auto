@@ -1,31 +1,44 @@
 ﻿from __future__ import annotations
 
 import json
+import re
 import sys
+from email.utils import parseaddr
+from html import escape
+from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlencode
 
 TARGET_SCREEN_INDEX = 0
 MIN_POPUP_WIDTH = 920
-MIN_POPUP_HEIGHT = 600
+MIN_POPUP_HEIGHT = 660
+ICON_DIR = Path(__file__).with_name("assets") / "icons"
 
 TEXT = {
     "title": "New Email Analysis Complete",
     "close": "Close",
     "sender": "Sender",
     "category": "Category",
-    "company_position": "Company/Position",
+    "company": "Company",
+    "position": "Position",
     "unknown": "unknown",
+    "unknown_company": "Unknown company",
+    "unknown_position": "Unknown position",
     "unknown_company_position": "Unknown company / Unknown position",
     "verification_code": "Verification code",
     "summary": "Summary",
     "no_summary": "No summary",
     "copy_code": "Copy code",
     "archive": "Archive",
+    "archived": "Archived",
+    "delete": "Delete",
+    "deleted": "Deleted",
     "star": "Star",
     "unstar": "Unstar",
     "missing_id": "Missing message_id; this email cannot be modified.",
     "failed": "Action failed",
     "done": "Done",
+    "working": "Working...",
     "unknown_action": "Unknown action",
 }
 
@@ -59,7 +72,9 @@ def show_popup(payload: dict[str, Any]) -> None:
     width = max(int(payload.get("width") or MIN_POPUP_WIDTH), MIN_POPUP_WIDTH)
     height = max(int(payload.get("height") or MIN_POPUP_HEIGHT), MIN_POPUP_HEIGHT)
     message_id = str(payload.get("message_id") or "").strip()
-    verification_code = str(payload.get("verification_code") or "").strip()
+    verification_code = _displayable_verification_code(
+        str(payload.get("verification_code") or "")
+    )
 
     window = QWidget()
     window.setWindowTitle("Gmail Auto v2")
@@ -108,22 +123,29 @@ def show_popup(payload: dict[str, Any]) -> None:
 
     meta_frame = QFrame()
     meta_frame.setObjectName("metaFrame")
-    meta_frame.setFixedHeight(164 if verification_code else 116)
+    meta_frame.setFixedHeight(204 if verification_code else 156)
     meta_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
     meta_layout = QVBoxLayout(meta_frame)
     meta_layout.setContentsMargins(0, 8, 0, 14)
     meta_layout.setSpacing(10)
-    for icon, label, value in [
-        ("", TEXT["sender"], payload.get("sender") or TEXT["unknown"]),
-        ("", TEXT["category"], payload.get("category") or TEXT["unknown"]),
-        (
-            "",
-            TEXT["company_position"],
-            payload.get("company_position") or TEXT["unknown_company_position"],
-        ),
+    reply_link = build_reply_link(
+        str(payload.get("sender") or ""),
+        str(payload.get("subject") or ""),
+    )
+    fallback_company, fallback_position = split_company_position(
+        str(payload.get("company_position") or ""),
+        TEXT["unknown_company"],
+        TEXT["unknown_position"],
+    )
+
+    for icon, label, value, link_url in [
+        ("", TEXT["sender"], payload.get("sender") or TEXT["unknown"], reply_link),
+        ("", TEXT["category"], payload.get("category") or TEXT["unknown"], ""),
+        ("", TEXT["company"], payload.get("company") or fallback_company, ""),
+        ("", TEXT["position"], payload.get("position") or fallback_position, ""),
     ]:
-        meta_layout.addLayout(meta_row(icon, label, str(value)))
+        meta_layout.addLayout(meta_row(icon, label, str(value), link_url=link_url))
 
     if verification_code:
         meta_layout.addLayout(
@@ -133,17 +155,47 @@ def show_popup(payload: dict[str, Any]) -> None:
     action_layout = QHBoxLayout()
     action_layout.setContentsMargins(0, 0, 0, 0)
     action_layout.setSpacing(20)
-    for icon, label, action in [
-        ("\u25a3", TEXT["archive"], "archive"),
-        ("\u2606", TEXT["star"], "star"),
-        ("\u2606", TEXT["unstar"], "unstar"),
-    ]:
-        button = QPushButton(f"{icon}  {label}")
-        button.setObjectName("primaryButton" if action == "archive" else "actionButton")
-        button.setFixedHeight(48)
-        button.setEnabled(bool(message_id))
-        button.clicked.connect(make_action_handler(action, message_id, status_label, app))
-        action_layout.addWidget(button)
+    action_buttons = []
+
+    archive_button = QPushButton(TEXT["archive"])
+    archive_button.setProperty("mailAction", "archive")
+    archive_button.setObjectName("primaryButton")
+    archive_button.setFixedHeight(48)
+    set_button_icon(archive_button, "archive-blue")
+    archive_button.setEnabled(bool(message_id))
+    archive_button.clicked.connect(
+        make_action_handler("archive", message_id, status_label, action_buttons)
+    )
+    action_layout.addWidget(archive_button)
+    action_buttons.append(archive_button)
+
+    delete_button = QPushButton(TEXT["delete"])
+    delete_button.setProperty("mailAction", "delete")
+    delete_button.setObjectName("dangerButton")
+    delete_button.setFixedHeight(48)
+    set_button_icon(delete_button, "trash-red")
+    delete_button.setEnabled(bool(message_id))
+    delete_button.clicked.connect(
+        make_action_handler("delete", message_id, status_label, action_buttons)
+    )
+    action_layout.addWidget(delete_button)
+    action_buttons.append(delete_button)
+
+    star_button = QPushButton()
+    star_button.setProperty("mailAction", "star_toggle")
+    star_button.setFixedHeight(48)
+    update_star_button(star_button, bool(payload.get("starred")))
+    star_button.setEnabled(bool(message_id))
+    star_button.clicked.connect(
+        make_action_handler(
+            lambda: star_toggle_action(star_button),
+            message_id,
+            status_label,
+            action_buttons,
+        )
+    )
+    action_layout.addWidget(star_button)
+    action_buttons.append(star_button)
 
     if verification_code:
         copy_code_button = QPushButton(f"\u2398  {TEXT['copy_code']}")
@@ -216,7 +268,7 @@ def show_popup(payload: dict[str, Any]) -> None:
     app.exec_()
 
 
-def meta_row(icon: str, label: str, value: str) -> Any:
+def meta_row(icon: str, label: str, value: str, link_url: str = "") -> Any:
     from PyQt5.QtCore import Qt
     from PyQt5.QtGui import QFont
     from PyQt5.QtWidgets import QHBoxLayout, QLabel
@@ -239,9 +291,15 @@ def meta_row(icon: str, label: str, value: str) -> Any:
     name_label.setFixedWidth(120)
     name_label.setFixedHeight(34)
 
-    value_label = selectable_label(value, QFont("Microsoft YaHei UI", 12), word_wrap=False)
+    if link_url:
+        value_label = link_label(value, link_url, QFont("Microsoft YaHei UI", 12))
+    else:
+        value_label = selectable_label(
+            value, QFont("Microsoft YaHei UI", 12), word_wrap=False
+        )
     value_label.setObjectName("metaValue")
     value_label.setFixedHeight(34)
+    value_label.setToolTip(value)
 
     row.addWidget(name_label)
     row.addWidget(value_label, stretch=1)
@@ -257,26 +315,162 @@ def divider() -> Any:
     return line
 
 
+def split_company_position(value: str, unknown_company: str, unknown_position: str) -> tuple[str, str]:
+    if not value.strip():
+        return unknown_company, unknown_position
+
+    company, separator, position = value.partition(" / ")
+    if not separator:
+        return value.strip(), unknown_position
+
+    return company.strip() or unknown_company, position.strip() or unknown_position
+
+
 def make_action_handler(
-    action: str,
+    action: str | Callable[[], str],
     message_id: str,
     status_label: Any,
-    app: Any,
+    action_buttons: list[Any],
 ) -> Callable[[], None]:
     def handler() -> None:
-        try:
-            run_mail_action(action, message_id)
-        except Exception as exc:
-            status_label.setText(f"{TEXT['failed']}: {exc}")
-            status_label.setVisible(True)
-            return
+        from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 
-        status_label.setText(f"{TEXT['done']}: {action_label(action)}")
+        class MailActionWorker(QObject):
+            finished = pyqtSignal(str, object)
+
+            def __init__(self, action_name: str, mail_message_id: str) -> None:
+                super().__init__()
+                self.action_name = action_name
+                self.mail_message_id = mail_message_id
+
+            def run(self) -> None:
+                error: Exception | None = None
+                try:
+                    run_mail_action(self.action_name, self.mail_message_id)
+                except Exception as exc:
+                    error = exc
+                self.finished.emit(self.action_name, error)
+
+        class MailActionFinishProxy(QObject):
+            @pyqtSlot(str, object)
+            def finish(self, action_name: str, error: object) -> None:
+                if error:
+                    status_label.setText(f"{TEXT['failed']}: {error}")
+                    set_action_buttons_enabled(action_buttons, True, message_id)
+                else:
+                    status_label.setText(f"{TEXT['done']}: {action_label(action_name)}")
+                    if action_name == "archive":
+                        mark_archived(action_buttons)
+                    elif action_name == "delete":
+                        mark_deleted(action_buttons)
+                    elif action_name in {"star", "unstar"}:
+                        mark_star_toggled(action_buttons, action_name == "star")
+                        set_action_buttons_enabled(action_buttons, True, message_id)
+                    else:
+                        set_action_buttons_enabled(action_buttons, True, message_id)
+                thread.quit()
+
+        action_name = action() if callable(action) else action
+        set_action_buttons_enabled(action_buttons, False, message_id)
+        status_label.setText(f"{TEXT['working']} {action_label(action_name)}")
         status_label.setVisible(True)
-        if action == "archive":
-            app.quit()
+
+        thread = QThread()
+        worker = MailActionWorker(action_name, message_id)
+        finish_proxy = MailActionFinishProxy()
+        worker.moveToThread(thread)
+
+        active_actions = getattr(status_label, "_active_mail_actions", None)
+        if active_actions is None:
+            active_actions = []
+            setattr(status_label, "_active_mail_actions", active_actions)
+        active_actions.append((thread, worker, finish_proxy))
+
+        def cleanup() -> None:
+            try:
+                active_actions.remove((thread, worker, finish_proxy))
+            except ValueError:
+                pass
+
+        thread.started.connect(worker.run)
+        worker.finished.connect(finish_proxy.finish)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(cleanup)
+        thread.start()
 
     return handler
+
+
+def set_action_buttons_enabled(
+    action_buttons: list[Any],
+    enabled: bool,
+    message_id: str,
+) -> None:
+    for button in action_buttons:
+        if button.property("mailAction") == "archive" and button.text().strip().endswith(TEXT["archived"]):
+            button.setEnabled(False)
+            continue
+        if button.property("mailAction") == "delete" and button.text().strip().endswith(TEXT["deleted"]):
+            button.setEnabled(False)
+            continue
+        button.setEnabled(enabled and bool(message_id))
+
+
+def star_toggle_action(button: Any) -> str:
+    return "unstar" if bool(button.property("starred")) else "star"
+
+
+def mark_star_toggled(action_buttons: list[Any], starred: bool) -> None:
+    for button in action_buttons:
+        if button.property("mailAction") == "star_toggle":
+            update_star_button(button, starred)
+            return
+
+
+def update_star_button(button: Any, starred: bool) -> None:
+    button.setProperty("starred", starred)
+    if starred:
+        button.setText(TEXT["unstar"])
+        set_button_icon(button, "star-filled-blue")
+        button.setObjectName("starredButton")
+    else:
+        button.setText(TEXT["star"])
+        set_button_icon(button, "star-outline-dark")
+        button.setObjectName("actionButton")
+
+    button.style().unpolish(button)
+    button.style().polish(button)
+
+
+def set_button_icon(button: Any, icon_name: str) -> None:
+    from PyQt5.QtCore import QSize
+    from PyQt5.QtGui import QIcon
+
+    button.setIcon(QIcon(str(ICON_DIR / f"{icon_name}.svg")))
+    button.setIconSize(QSize(26, 26))
+
+
+def mark_archived(action_buttons: list[Any]) -> None:
+    for button in action_buttons:
+        if button.property("mailAction") == "archive":
+            button.setText(TEXT["archived"])
+            set_button_icon(button, "archive-muted")
+            button.setObjectName("archivedButton")
+            button.style().unpolish(button)
+            button.style().polish(button)
+        button.setEnabled(False)
+
+
+def mark_deleted(action_buttons: list[Any]) -> None:
+    for button in action_buttons:
+        if button.property("mailAction") == "delete":
+            button.setText(TEXT["deleted"])
+            set_button_icon(button, "trash-muted")
+            button.setObjectName("deletedButton")
+            button.style().unpolish(button)
+            button.style().polish(button)
+        button.setEnabled(False)
 
 
 def run_mail_action(action: str, message_id: str) -> None:
@@ -284,12 +478,14 @@ def run_mail_action(action: str, message_id: str) -> None:
         archive_message,
         authenticate_gmail,
         star_message,
+        trash_message,
         unstar_message,
     )
 
     service = authenticate_gmail()
     actions = {
         "archive": archive_message,
+        "delete": trash_message,
         "star": star_message,
         "unstar": unstar_message,
     }
@@ -304,6 +500,7 @@ def run_mail_action(action: str, message_id: str) -> None:
 def action_label(action: str) -> str:
     return {
         "archive": TEXT["archive"],
+        "delete": TEXT["delete"],
         "star": TEXT["star"],
         "unstar": TEXT["unstar"],
     }.get(action, action)
@@ -324,6 +521,31 @@ def selectable_label(
     return label
 
 
+def link_label(text: str, url: str, font: Any) -> Any:
+    from PyQt5.QtCore import Qt
+    from PyQt5.QtWidgets import QLabel
+
+    label = QLabel(f'<a href="{escape(url, quote=True)}">{escape(text)}</a>')
+    label.setFont(font)
+    label.setTextFormat(Qt.RichText)
+    label.setTextInteractionFlags(Qt.TextBrowserInteraction)
+    label.setOpenExternalLinks(True)
+    return label
+
+
+def build_reply_link(sender: str, subject: str) -> str:
+    _, email_address = parseaddr(sender)
+    if not email_address:
+        return ""
+
+    reply_subject = subject.strip()
+    if reply_subject and not reply_subject.lower().startswith("re:"):
+        reply_subject = f"Re: {reply_subject}"
+
+    query = urlencode({"subject": reply_subject}) if reply_subject else ""
+    return f"mailto:{email_address}?{query}" if query else f"mailto:{email_address}"
+
+
 def move_to_screen(window: Any, app: Any) -> None:
     screens = app.screens()
     if not screens:
@@ -338,6 +560,20 @@ def move_to_screen(window: Any, app: Any) -> None:
     x = area.x() + area.width() - window.width() - margin
     y = area.y() + area.height() - window.height() - margin
     window.move(x, y)
+
+
+def _displayable_verification_code(value: str) -> str:
+    code = value.strip()
+    compact_code = re.sub(r"[\s-]+", "", code)
+    if not 4 <= len(compact_code) <= 12:
+        return ""
+    if not re.fullmatch(r"[A-Za-z0-9]+", compact_code):
+        return ""
+    if compact_code.isalpha() and len(compact_code) > 8:
+        return ""
+    if not re.search(r"\d", compact_code):
+        return ""
+    return code
 
 
 STYLESHEET = """
@@ -447,6 +683,30 @@ QPushButton#primaryButton {
     border: 1px solid #a9c8ff;
 }
 
+QPushButton#starredButton {
+    color: #0b6fea;
+    background-color: #f2f7ff;
+    border: 1px solid #a9c8ff;
+}
+
+QPushButton#dangerButton {
+    color: #b42318;
+    background-color: #fff5f5;
+    border: 1px solid #f4b4ab;
+}
+
+QPushButton#archivedButton {
+    color: #8a94a6;
+    background-color: #eef1f5;
+    border: 1px solid #d8dee8;
+}
+
+QPushButton#deletedButton {
+    color: #8a94a6;
+    background-color: #eef1f5;
+    border: 1px solid #d8dee8;
+}
+
 QPushButton:hover {
     background-color: #f3f7fc;
     border-color: #b9c7dc;
@@ -455,6 +715,16 @@ QPushButton:hover {
 QPushButton#primaryButton:hover {
     background-color: #e8f2ff;
     border-color: #7fb0ff;
+}
+
+QPushButton#starredButton:hover {
+    background-color: #e8f2ff;
+    border-color: #7fb0ff;
+}
+
+QPushButton#dangerButton:hover {
+    background-color: #ffe7e4;
+    border-color: #f08a7d;
 }
 
 QPushButton:disabled {

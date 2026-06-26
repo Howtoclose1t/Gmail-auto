@@ -250,7 +250,7 @@ def analyze_and_store(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Gmail Auto v2: read Gmail, classify with local Ollama, and show Qt buttons for archive/star/unstar."
+        description="Gmail Auto v2: read Gmail, classify with local Ollama, and show Qt buttons for archive/delete/star toggle."
     )
     parser.add_argument(
         "--max",

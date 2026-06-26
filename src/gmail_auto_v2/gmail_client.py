@@ -17,6 +17,7 @@ class EmailMessage:
     date: str
     snippet: str
     body: str
+    label_ids: tuple[str, ...] = ()
 
 
 def authenticate_gmail(
@@ -139,6 +140,10 @@ def unstar_message(service: Any, message_id: str) -> dict[str, Any]:
     return modify_message(service, message_id, remove_label_ids=["STARRED"])
 
 
+def trash_message(service: Any, message_id: str) -> dict[str, Any]:
+    return service.users().messages().trash(userId="me", id=message_id).execute()
+
+
 def modify_message(
     service: Any,
     message_id: str,
@@ -176,6 +181,7 @@ def _fetch_message(service: Any, message_id: str) -> EmailMessage:
         date=get_header(headers, "Date"),
         snippet=message.get("snippet", ""),
         body=body[:MAX_BODY_LENGTH],
+        label_ids=tuple(message.get("labelIds", [])),
     )
 
 

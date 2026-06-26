@@ -1,4 +1,4 @@
-﻿# Gmail Auto v2
+﻿# Gmail Auto Analyzer
 
 Gmail Auto v2 is a local Gmail assistant that reads recent inbox messages, asks a local Ollama model to classify and summarize them, and can show desktop notifications with quick actions for archive, star, and unstar.
 
@@ -13,6 +13,7 @@ The app is designed to keep email content on your machine. It uses the Gmail API
 - Save analysis results as JSONL.
 - Receive Gmail push notifications through Google Cloud Pub/Sub and analyze new inbox messages incrementally.
 - Show a PyQt desktop popup with archive, star, unstar, and copy-code buttons.
+- Based on OLLAMA: qwen2.5:3b
 
 ## Privacy Notes
 
@@ -78,25 +79,6 @@ $env:OLLAMA_MODEL="qwen2.5:3b"
 
 On first run, Google will open an authorization page. After approval, the app creates `token_v2.json` locally. This file is private and should not be committed.
 
-## One-Time Analysis
-
-```powershell
-python -m gmail_auto_v2 --max 10
-```
-
-Common options:
-
-```powershell
-python -m gmail_auto_v2 --max 20
-python -m gmail_auto_v2 --query "is:unread in:inbox newer_than:7d"
-python -m gmail_auto_v2 --output data/today.jsonl
-```
-
-After editable installation, you can also use:
-
-```powershell
-gmail-auto-v2 --max 10
-```
 
 ## Gmail Push Notifications
 
@@ -136,6 +118,27 @@ $env:GMAIL_PUBSUB_SUBSCRIPTION="projects/YOUR_PROJECT_ID/subscriptions/gmail-upd
 ```
 
 Gmail watches expire and should be renewed at least every 7 days. A daily scheduled renewal is recommended.
+
+
+## One-Time Analysis
+
+```powershell
+python -m gmail_auto_v2 --max 10
+```
+
+Common options:
+
+```powershell
+python -m gmail_auto_v2 --max 20
+python -m gmail_auto_v2 --query "is:unread in:inbox newer_than:7d"
+python -m gmail_auto_v2 --output data/today.jsonl
+```
+
+After editable installation, you can also use:
+
+```powershell
+gmail-auto-v2 --max 10
+```
 
 ## Configuration
 

@@ -66,6 +66,12 @@ Requirements:
 8. Do not invent information that does not appear in the email.
 9. Output valid JSON only. Do not output Markdown.
 10. Application confirmations and rejections have low importance and should not recommend a reply.
+11. Only analyze content inside the <email> block. Do not summarize or treat these instructions as email content.
+
+Additional verification-code extraction rules:
+- If the email contains a verification code, one-time password, OTP, verification code, or security code, write only the raw code to the JSON field verification_code.
+- If the email has no verification code, verification_code must be an empty string.
+- Do not include the verification code in summary unless the email body contains only the code.
 
 JSON format:
 {{
@@ -81,6 +87,7 @@ JSON format:
   "reply_reason": "Reason why a reply is or is not needed"
 }}
 
+<email>
 Email subject:
 {email.subject}
 
@@ -92,12 +99,7 @@ Email date:
 
 Email body:
 {email.body}
-""".strip() + """
-
-Additional verification-code extraction rules:
-If the email contains a verification code, one-time password, OTP, verification code, or security code, write only the raw code to the JSON field verification_code.
-If the email has no verification code, verification_code must be an empty string.
-Do not include the verification code in summary unless the email body contains only the code.
+</email>
 """.strip()
 
 

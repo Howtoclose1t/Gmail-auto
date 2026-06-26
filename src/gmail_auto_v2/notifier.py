@@ -9,7 +9,7 @@ from gmail_auto_v2.analyzer import EmailAnalysis
 from gmail_auto_v2.gmail_client import EmailMessage
 
 NOTIFICATION_WIDTH = 920
-NOTIFICATION_HEIGHT = 600
+NOTIFICATION_HEIGHT = 660
 
 
 def send_desktop_notification(email: EmailMessage, analysis: EmailAnalysis) -> bool:
@@ -20,7 +20,10 @@ def send_desktop_notification(email: EmailMessage, analysis: EmailAnalysis) -> b
             "thread_id": email.thread_id,
             "subject": email.subject,
             "sender": email.sender,
+            "starred": "STARRED" in email.label_ids,
             "category": analysis.category,
+            "company": analysis.company.strip() or "Unknown company",
+            "position": analysis.position.strip() or "Unknown position",
             "company_position": _company_position(analysis),
             "summary": analysis.summary,
             "verification_code": analysis.verification_code,

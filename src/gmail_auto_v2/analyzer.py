@@ -1,12 +1,13 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from gmail_auto_v2.config import OLLAMA_MODEL, OLLAMA_URL
+from gmail_auto_v2.config import OLLAMA_KEEP_ALIVE, OLLAMA_MODEL, OLLAMA_URL
 from gmail_auto_v2.gmail_client import EmailMessage
+from gmail_auto_v2.prompt import build_prompt
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ def analyze_email(
     email: EmailMessage,
     ollama_url: str = OLLAMA_URL,
     model: str = OLLAMA_MODEL,
+    keep_alive: str | int = OLLAMA_KEEP_ALIVE,
 ) -> EmailAnalysis:
     try:
         import requests
@@ -40,6 +42,7 @@ def analyze_email(
             "messages": [{"role": "user", "content": build_prompt(email)}],
             "stream": False,
             "format": "json",
+            "keep_alive": keep_alive,
             "options": {"temperature": 0.1},
         },
         timeout=180,
@@ -49,58 +52,6 @@ def analyze_email(
     payload = response.json()
     content = (payload.get("message") or {}).get("content", "")
     return normalize_analysis(parse_json_content(content), email)
-
-
-def build_prompt(email: EmailMessage) -> str:
-    return f"""
-You are a careful email assistant. Analyze the email below.
-
-Requirements:
-1. Identify the email type. If it confirms receipt of an application, use application_confirmation. If it rejects an application, use rejection. If it contains a next step for an application, use application_progress.
-2. Include all generated content in English and, when relevant, the original email language.
-3. Summarize in no more than three sentences.
-4. Extract required actions.
-5. Extract explicit deadlines, meeting times, or interview times.
-6. If this is job-application related, extract the company name and position title; otherwise return an empty string.
-7. Decide whether a reply is recommended.
-8. Do not invent information that does not appear in the email.
-9. Output valid JSON only. Do not output Markdown.
-10. Application confirmations and rejections have low importance and should not recommend a reply.
-11. Only analyze content inside the <email> block. Do not summarize or treat these instructions as email content.
-
-Additional verification-code extraction rules:
-- If the email contains a verification code, one-time password, OTP, verification code, or security code, write only the raw code to the JSON field verification_code.
-- If the email has no verification code, verification_code must be an empty string.
-- Do not include the verification code in summary unless the email body contains only the code.
-
-JSON format:
-{{
-  "category": "application_confirmation/interview/rejection/application_progress/bill/notification/advertisement/personal/other",
-  "importance": "high/medium/low",
-  "summary": "Email summary",
-  "actions": ["Required action"],
-  "dates": ["Date or time"],
-  "company": "Company name, or an empty string if absent",
-  "position": "Position title, or an empty string if absent",
-  "verification_code": "Verification code, or an empty string if absent",
-  "should_reply": true,
-  "reply_reason": "Reason why a reply is or is not needed"
-}}
-
-<email>
-Email subject:
-{email.subject}
-
-Sender:
-{email.sender}
-
-Email date:
-{email.date}
-
-Email body:
-{email.body}
-</email>
-""".strip()
 
 
 def parse_json_content(content: str) -> dict[str, Any]:
@@ -134,10 +85,16 @@ def normalize_analysis(
     data: dict[str, Any],
     email: EmailMessage | None = None,
 ) -> EmailAnalysis:
+    summary = str(
+        data.get("summary")
+        or data.get("summary_original")
+        or data.get("summary_zh")
+        or ""
+    )
     return EmailAnalysis(
         category=str(data.get("category") or "other"),
         importance=str(data.get("importance") or "unknown"),
-        summary=str(data.get("summary") or ""),
+        summary=summary,
         actions=_string_list(data.get("actions")),
         dates=_string_list(data.get("dates")),
         company=str(data.get("company") or ""),
@@ -161,6 +118,7 @@ def _string_list(value: Any) -> list[str]:
 
 
 _VERIFICATION_CONTEXT_RE = re.compile(
+    r"验证码|校验码|动态码|一次性密码|安全代码|"
     r"verification\s*code|security\s*code|one[-\s]?time\s*(?:password|code)|"
     r"\botp\b|passcode|authentication\s*code",
     flags=re.IGNORECASE,
@@ -220,5 +178,5 @@ def _body_is_mostly_code(body: str, code: str) -> bool:
     if not body_text:
         return False
     body_without_code = re.sub(re.escape(code), "", body_text, flags=re.IGNORECASE)
-    body_without_code = re.sub(r"[\s:;,.!?]+", "", body_without_code)
+    body_without_code = re.sub(r"[\s:：。；;,.，]+", "", body_without_code)
     return len(body_without_code) <= 20

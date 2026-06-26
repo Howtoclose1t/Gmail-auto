@@ -12,7 +12,9 @@ DEFAULT_OUTPUT_FILE = ROOT_DIR / "data" / "v2_analysis.jsonl"
 DEFAULT_STATE_FILE = ROOT_DIR / "data" / "v2_push_state.json"
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+OLLAMA_MODEL = "qwen3:4b"  # "qwen3:8b"
+OLLAMA_KEEP_ALIVE_FOREVER = True
+OLLAMA_KEEP_ALIVE = -1 if OLLAMA_KEEP_ALIVE_FOREVER else "30m"
 GMAIL_PUBSUB_TOPIC = os.getenv("GMAIL_PUBSUB_TOPIC", "")
 GMAIL_PUBSUB_SUBSCRIPTION = os.getenv("GMAIL_PUBSUB_SUBSCRIPTION", "")
 

@@ -67,7 +67,11 @@ ollama serve
 To use another local model:
 
 ```powershell
-$env:OLLAMA_MODEL="qwen2.5:3b"
+ollama pull qwen3:4b
+```
+or
+```powershell
+ollama pull qwen2.5:3b
 ```
 
 ## Google Setup

@@ -4,6 +4,9 @@ Gmail Auto v2 is a local Gmail assistant that reads recent inbox messages, asks 
 
 The app is designed to keep email content on your machine. It uses the Gmail API for mailbox access and a local Ollama endpoint for analysis.
 
+
+![Gmail Auto v2 desktop notification popup](docs/images/notification-popup.png)
+
 ## Features
 
 - Fetch recent Gmail messages with a configurable Gmail search query.
@@ -13,7 +16,7 @@ The app is designed to keep email content on your machine. It uses the Gmail API
 - Save analysis results as JSONL.
 - Receive Gmail push notifications through Google Cloud Pub/Sub and analyze new inbox messages incrementally.
 - Show a PyQt desktop popup with archive, star, unstar, and copy-code buttons.
-- Based on OLLAMA: qwen2.5:3b
+- Based on OLLAMA: qwen3:8b
 
 ## Privacy Notes
 
@@ -45,11 +48,14 @@ These files are intentionally ignored by Git because they may contain OAuth secr
 - Gmail API enabled in a Google Cloud project
 - Optional: Google Cloud Pub/Sub for push notifications
 
-Install Python dependencies:
+Quick start:
 
 ```powershell
+git clone https://github.com/Howtoclose1t/Gmail-auto
+cd Gmail-auto
 pip install -r requirements.txt
 ```
+
 
 Install the package in editable mode if you want the `gmail-auto-v2` command:
 
@@ -102,7 +108,7 @@ projects/YOUR_PROJECT_ID/topics/gmail-updates
 projects/YOUR_PROJECT_ID/subscriptions/gmail-updates-sub
 ```
 
-Register or renew the Gmail watch:
+Register or renew the Gmail watch (Use it if you want to skip a large number of unread emails):
 
 ```powershell
 python -m gmail_auto_v2 --setup-push --topic projects/YOUR_PROJECT_ID/topics/gmail-updates
@@ -114,12 +120,7 @@ Start receiving notifications:
 python -m gmail_auto_v2 --receive-push --subscription projects/YOUR_PROJECT_ID/subscriptions/gmail-updates-sub
 ```
 
-You can also use environment variables:
 
-```powershell
-$env:GMAIL_PUBSUB_TOPIC="projects/YOUR_PROJECT_ID/topics/gmail-updates"
-$env:GMAIL_PUBSUB_SUBSCRIPTION="projects/YOUR_PROJECT_ID/subscriptions/gmail-updates-sub"
-```
 
 Gmail watches expire and should be renewed at least every 7 days. A daily scheduled renewal is recommended.
 

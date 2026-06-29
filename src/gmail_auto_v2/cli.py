@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import base64
@@ -107,16 +107,20 @@ def receive_push(args: argparse.Namespace) -> None:
     gmail_service = authenticate_gmail()
     current_email = get_profile_email(gmail_service)
     subscriber = pubsub_v1.SubscriberClient()
-    scheduler = pubsub_v1.subscriber.scheduler.ThreadScheduler(
-        concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    )
+    scheduler_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    scheduler = pubsub_v1.subscriber.scheduler.ThreadScheduler(scheduler_executor)
     flow_control = pubsub_v1.types.FlowControl(max_messages=1)
     processing_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     output_file = Path(args.output)
     state_file = Path(args.state)
     callback_lock = threading.Lock()
+    stop_event = threading.Event()
 
     def callback(message: Any) -> None:
+        if stop_event.is_set():
+            message.nack()
+            return
+
         try:
             notification = decode_pubsub_notification(message.data)
         except Exception as exc:
@@ -137,6 +141,7 @@ def receive_push(args: argparse.Namespace) -> None:
                     state_file=state_file,
                     desktop_notify=not args.no_desktop_notify,
                     current_email=current_email,
+                    stop_event=stop_event,
                 )
         except Exception as exc:
             print(f"Failed to process Gmail notification; state was not advanced and the next notification will catch up: {exc}")
@@ -151,11 +156,21 @@ def receive_push(args: argparse.Namespace) -> None:
     print("New email notifications will automatically fetch and analyze changes. Press Ctrl+C to exit.")
 
     try:
-        future.result()
+        while True:
+            try:
+                future.result(timeout=1)
+                break
+            except concurrent.futures.TimeoutError:
+                continue
     except KeyboardInterrupt:
+        stop_event.set()
+        print("\nStopping Gmail push notification receiver...")
+    finally:
         future.cancel()
-        processing_executor.shutdown(wait=False, cancel_futures=True)
-        print("\nStopped receiving push notifications.")
+        subscriber.close()
+        processing_executor.shutdown(wait=True, cancel_futures=True)
+        scheduler_executor.shutdown(wait=False, cancel_futures=True)
+        print("Stopped receiving push notifications.")
 
 
 def decode_pubsub_notification(data: bytes) -> dict[str, str]:
@@ -175,7 +190,12 @@ def process_notification(
     state_file: Path,
     desktop_notify: bool,
     current_email: str = "",
+    stop_event: threading.Event | None = None,
 ) -> None:
+    if stop_event and stop_event.is_set():
+        print("Stop requested; skipping Gmail notification processing.")
+        return
+
     new_history_id = notification.get("historyId")
     if not new_history_id:
         print("Received a notification without historyId; skipping.")
@@ -217,7 +237,12 @@ def process_notification(
         new_emails,
         output_file,
         desktop_notify=desktop_notify,
+        stop_event=stop_event,
     )
+    if stop_event and stop_event.is_set():
+        print("Stop requested; push state was not advanced. Remaining emails will be retried next run.")
+        return
+
     save_state(state_file, new_history_id, processed_ids | set(analyzed_ids))
 
 
@@ -225,11 +250,16 @@ def analyze_and_store(
     emails: list[EmailMessage],
     output_file: Path,
     desktop_notify: bool,
+    stop_event: threading.Event | None = None,
 ) -> list[str]:
     print(f"Found {len(emails)} emails; starting analysis.\n")
 
     analyzed_ids: list[str] = []
     for index, email in enumerate(emails, start=1):
+        if stop_event and stop_event.is_set():
+            print("Stop requested; skipping remaining emails.")
+            break
+
         print(f"Calling Ollama to analyze: {email.subject or 'No subject'}")
         try:
             analysis = analyze_email(email)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -132,6 +133,10 @@ def archive_message(service: Any, message_id: str) -> dict[str, Any]:
     return modify_message(service, message_id, remove_label_ids=["INBOX"])
 
 
+def unarchive_message(service: Any, message_id: str) -> dict[str, Any]:
+    return modify_message(service, message_id, add_label_ids=["INBOX"])
+
+
 def star_message(service: Any, message_id: str) -> dict[str, Any]:
     return modify_message(service, message_id, add_label_ids=["STARRED"])
 
@@ -142,6 +147,10 @@ def unstar_message(service: Any, message_id: str) -> dict[str, Any]:
 
 def trash_message(service: Any, message_id: str) -> dict[str, Any]:
     return service.users().messages().trash(userId="me", id=message_id).execute()
+
+
+def untrash_message(service: Any, message_id: str) -> dict[str, Any]:
+    return service.users().messages().untrash(userId="me", id=message_id).execute()
 
 
 def modify_message(
@@ -178,11 +187,37 @@ def _fetch_message(service: Any, message_id: str) -> EmailMessage:
         thread_id=message.get("threadId", ""),
         subject=get_header(headers, "Subject"),
         sender=get_header(headers, "From"),
-        date=get_header(headers, "Date"),
+        date=_message_date(message),
         snippet=message.get("snippet", ""),
         body=body[:MAX_BODY_LENGTH],
         label_ids=tuple(message.get("labelIds", [])),
     )
+
+
+def _message_date(message: dict[str, Any]) -> str:
+    internal_date = str(message.get("internalDate") or "").strip()
+    if not internal_date:
+        return ""
+
+    try:
+        timestamp = int(internal_date) / 1000
+    except ValueError:
+        return ""
+
+    local_datetime = datetime.fromtimestamp(timestamp).astimezone()
+    return f"{local_datetime:%Y-%m-%d %H:%M:%S} ({_utc_offset_label(local_datetime)})"
+
+
+def _utc_offset_label(value: datetime) -> str:
+    offset = value.utcoffset()
+    if offset is None:
+        return "UTC"
+
+    total_minutes = int(offset.total_seconds() // 60)
+    sign = "+" if total_minutes >= 0 else "-"
+    total_minutes = abs(total_minutes)
+    hours, minutes = divmod(total_minutes, 60)
+    return f"UTC{sign}{hours:02d}:{minutes:02d}"
 
 
 def _is_not_found_error(exc: Exception) -> bool:

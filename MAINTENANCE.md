@@ -1,5 +1,31 @@
 # Maintenance Log
 
+## Updates - 2026-06-29 - v2.3.0
+
+### Overview
+
+Improved Gmail Auto v2 push-listener shutdown behavior, notification metadata, reversible mailbox actions, and first-run setup documentation.
+
+### Added
+
+- Added the received date to the desktop notification UI.
+- Added Gmail `internalDate` based date formatting with numeric UTC offsets, for example `2026-06-26 14:59:14 (UTC+02:00)`.
+- Added undo support for archive actions through `Unarchive`.
+- Added undo support for delete actions through `Restore`.
+- Added `FUTURE_UPDATES.md` as a place to track future work, including strikethrough examples.
+
+### Changed
+
+- Changed archive and delete buttons to behave like the existing Star/Unstar toggle mechanism.
+- Changed push notification shutdown to close Pub/Sub subscriber resources and executor pools more cleanly.
+- Changed push processing so Ctrl+C stops after the current in-flight Ollama analysis instead of continuing through the remaining batch.
+
+### Fixed
+
+- Fixed Ctrl+C not ending the push listener cleanly in PowerShell.
+- Prevented push state from advancing when shutdown interrupts a notification batch, so unprocessed emails can be retried on the next run.
+- Avoided localized Windows timezone names in the notification date display.
+
 ## Updates - 2026-06-27 - v2.2.0
 
 ### Overview

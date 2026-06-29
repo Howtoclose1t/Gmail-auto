@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import re
@@ -18,6 +18,7 @@ TEXT = {
     "title": "New Email Analysis Complete",
     "close": "Close",
     "sender": "Sender",
+    "date": "Date",
     "category": "Category",
     "company": "Company",
     "position": "Position",
@@ -30,8 +31,10 @@ TEXT = {
     "no_summary": "No summary",
     "copy_code": "Copy code",
     "archive": "Archive",
+    "unarchive": "Unarchive",
     "archived": "Archived",
     "delete": "Delete",
+    "restore": "Restore",
     "deleted": "Deleted",
     "star": "Star",
     "unstar": "Unstar",
@@ -123,7 +126,7 @@ def show_popup(payload: dict[str, Any]) -> None:
 
     meta_frame = QFrame()
     meta_frame.setObjectName("metaFrame")
-    meta_frame.setFixedHeight(204 if verification_code else 156)
+    meta_frame.setFixedHeight(242 if verification_code else 194)
     meta_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
     meta_layout = QVBoxLayout(meta_frame)
@@ -141,6 +144,7 @@ def show_popup(payload: dict[str, Any]) -> None:
 
     for icon, label, value, link_url in [
         ("", TEXT["sender"], payload.get("sender") or TEXT["unknown"], reply_link),
+        ("", TEXT["date"], payload.get("date") or TEXT["unknown"], ""),
         ("", TEXT["category"], payload.get("category") or TEXT["unknown"], ""),
         ("", TEXT["company"], payload.get("company") or fallback_company, ""),
         ("", TEXT["position"], payload.get("position") or fallback_position, ""),
@@ -158,25 +162,33 @@ def show_popup(payload: dict[str, Any]) -> None:
     action_buttons = []
 
     archive_button = QPushButton(TEXT["archive"])
-    archive_button.setProperty("mailAction", "archive")
-    archive_button.setObjectName("primaryButton")
+    archive_button.setProperty("mailAction", "archive_toggle")
     archive_button.setFixedHeight(48)
-    set_button_icon(archive_button, "archive-blue")
+    update_archive_button(archive_button, archived=False)
     archive_button.setEnabled(bool(message_id))
     archive_button.clicked.connect(
-        make_action_handler("archive", message_id, status_label, action_buttons)
+        make_action_handler(
+            lambda: archive_toggle_action(archive_button),
+            message_id,
+            status_label,
+            action_buttons,
+        )
     )
     action_layout.addWidget(archive_button)
     action_buttons.append(archive_button)
 
     delete_button = QPushButton(TEXT["delete"])
-    delete_button.setProperty("mailAction", "delete")
-    delete_button.setObjectName("dangerButton")
+    delete_button.setProperty("mailAction", "delete_toggle")
     delete_button.setFixedHeight(48)
-    set_button_icon(delete_button, "trash-red")
+    update_delete_button(delete_button, deleted=False)
     delete_button.setEnabled(bool(message_id))
     delete_button.clicked.connect(
-        make_action_handler("delete", message_id, status_label, action_buttons)
+        make_action_handler(
+            lambda: delete_toggle_action(delete_button),
+            message_id,
+            status_label,
+            action_buttons,
+        )
     )
     action_layout.addWidget(delete_button)
     action_buttons.append(delete_button)
@@ -359,10 +371,12 @@ def make_action_handler(
                     set_action_buttons_enabled(action_buttons, True, message_id)
                 else:
                     status_label.setText(f"{TEXT['done']}: {action_label(action_name)}")
-                    if action_name == "archive":
-                        mark_archived(action_buttons)
-                    elif action_name == "delete":
-                        mark_deleted(action_buttons)
+                    if action_name in {"archive", "unarchive"}:
+                        mark_archive_toggled(action_buttons, action_name == "archive")
+                        set_action_buttons_enabled(action_buttons, True, message_id)
+                    elif action_name in {"delete", "restore"}:
+                        mark_delete_toggled(action_buttons, action_name == "delete")
+                        set_action_buttons_enabled(action_buttons, True, message_id)
                     elif action_name in {"star", "unstar"}:
                         mark_star_toggled(action_buttons, action_name == "star")
                         set_action_buttons_enabled(action_buttons, True, message_id)
@@ -408,17 +422,33 @@ def set_action_buttons_enabled(
     message_id: str,
 ) -> None:
     for button in action_buttons:
-        if button.property("mailAction") == "archive" and button.text().strip().endswith(TEXT["archived"]):
-            button.setEnabled(False)
-            continue
-        if button.property("mailAction") == "delete" and button.text().strip().endswith(TEXT["deleted"]):
-            button.setEnabled(False)
-            continue
         button.setEnabled(enabled and bool(message_id))
+
+
+def archive_toggle_action(button: Any) -> str:
+    return "unarchive" if bool(button.property("archived")) else "archive"
+
+
+def delete_toggle_action(button: Any) -> str:
+    return "restore" if bool(button.property("deleted")) else "delete"
 
 
 def star_toggle_action(button: Any) -> str:
     return "unstar" if bool(button.property("starred")) else "star"
+
+
+def mark_archive_toggled(action_buttons: list[Any], archived: bool) -> None:
+    for button in action_buttons:
+        if button.property("mailAction") == "archive_toggle":
+            update_archive_button(button, archived)
+            return
+
+
+def mark_delete_toggled(action_buttons: list[Any], deleted: bool) -> None:
+    for button in action_buttons:
+        if button.property("mailAction") == "delete_toggle":
+            update_delete_button(button, deleted)
+            return
 
 
 def mark_star_toggled(action_buttons: list[Any], starred: bool) -> None:
@@ -426,6 +456,36 @@ def mark_star_toggled(action_buttons: list[Any], starred: bool) -> None:
         if button.property("mailAction") == "star_toggle":
             update_star_button(button, starred)
             return
+
+
+def update_archive_button(button: Any, archived: bool) -> None:
+    button.setProperty("archived", archived)
+    if archived:
+        button.setText(TEXT["unarchive"])
+        set_button_icon(button, "archive-muted")
+        button.setObjectName("archivedButton")
+    else:
+        button.setText(TEXT["archive"])
+        set_button_icon(button, "archive-blue")
+        button.setObjectName("primaryButton")
+
+    button.style().unpolish(button)
+    button.style().polish(button)
+
+
+def update_delete_button(button: Any, deleted: bool) -> None:
+    button.setProperty("deleted", deleted)
+    if deleted:
+        button.setText(TEXT["restore"])
+        set_button_icon(button, "trash-muted")
+        button.setObjectName("deletedButton")
+    else:
+        button.setText(TEXT["delete"])
+        set_button_icon(button, "trash-red")
+        button.setObjectName("dangerButton")
+
+    button.style().unpolish(button)
+    button.style().polish(button)
 
 
 def update_star_button(button: Any, starred: bool) -> None:
@@ -451,41 +511,23 @@ def set_button_icon(button: Any, icon_name: str) -> None:
     button.setIconSize(QSize(26, 26))
 
 
-def mark_archived(action_buttons: list[Any]) -> None:
-    for button in action_buttons:
-        if button.property("mailAction") == "archive":
-            button.setText(TEXT["archived"])
-            set_button_icon(button, "archive-muted")
-            button.setObjectName("archivedButton")
-            button.style().unpolish(button)
-            button.style().polish(button)
-        button.setEnabled(False)
-
-
-def mark_deleted(action_buttons: list[Any]) -> None:
-    for button in action_buttons:
-        if button.property("mailAction") == "delete":
-            button.setText(TEXT["deleted"])
-            set_button_icon(button, "trash-muted")
-            button.setObjectName("deletedButton")
-            button.style().unpolish(button)
-            button.style().polish(button)
-        button.setEnabled(False)
-
-
 def run_mail_action(action: str, message_id: str) -> None:
     from gmail_auto_v2.gmail_client import (
         archive_message,
         authenticate_gmail,
         star_message,
         trash_message,
+        unarchive_message,
         unstar_message,
+        untrash_message,
     )
 
     service = authenticate_gmail()
     actions = {
         "archive": archive_message,
+        "unarchive": unarchive_message,
         "delete": trash_message,
+        "restore": untrash_message,
         "star": star_message,
         "unstar": unstar_message,
     }
@@ -500,7 +542,9 @@ def run_mail_action(action: str, message_id: str) -> None:
 def action_label(action: str) -> str:
     return {
         "archive": TEXT["archive"],
+        "unarchive": TEXT["unarchive"],
         "delete": TEXT["delete"],
+        "restore": TEXT["restore"],
         "star": TEXT["star"],
         "unstar": TEXT["unstar"],
     }.get(action, action)

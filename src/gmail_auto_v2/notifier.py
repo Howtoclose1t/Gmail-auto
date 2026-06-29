@@ -20,6 +20,7 @@ def send_desktop_notification(email: EmailMessage, analysis: EmailAnalysis) -> b
             "thread_id": email.thread_id,
             "subject": email.subject,
             "sender": email.sender,
+            "date": email.date,
             "starred": "STARRED" in email.label_ids,
             "category": analysis.category,
             "company": analysis.company.strip() or "Unknown company",

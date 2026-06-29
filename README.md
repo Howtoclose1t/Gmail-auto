@@ -1,6 +1,6 @@
 ﻿# Gmail Auto Analyzer
 
-Gmail Auto Analyzer v2 is a local Gmail assistant that reads recent inbox messages, asks a local Ollama model to classify and summarize them, and can show desktop notifications with quick actions for archive, star, and unstar.
+Gmail Auto Analyzer is a local Gmail assistant that reads recent inbox messages, asks a local Ollama model to classify and summarize them, and can show desktop notifications with quick actions for archive, star, and unstar.
 
 The app is designed to keep email content on your machine. It uses the Gmail API for mailbox access and a local Ollama endpoint for analysis.
 

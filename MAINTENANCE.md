@@ -1,5 +1,17 @@
 # Maintenance Log
 
+## Updates - 2026-06-29 - v2.3.1
+
+### Overview
+
+Refined the verification-code notification layout so one-time passwords are easier to read and copy.
+
+### Changed
+
+- Moved the verification code out of the metadata rows into a dedicated bordered card.
+- Moved the `Copy code` button into the verification-code card and kept only one copy button in the popup.
+- Increased the verification-code popup height so metadata, actions, and summary content have enough space.
+
 ## Updates - 2026-06-29 - v2.3.0
 
 ### Overview

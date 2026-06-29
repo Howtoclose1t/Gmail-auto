@@ -27,6 +27,7 @@ TEXT = {
     "unknown_position": "Unknown position",
     "unknown_company_position": "Unknown company / Unknown position",
     "verification_code": "Verification code",
+    "copy_hint": "Click to copy the code",
     "summary": "Summary",
     "no_summary": "No summary",
     "copy_code": "Copy code",
@@ -73,11 +74,12 @@ def show_popup(payload: dict[str, Any]) -> None:
     app = QApplication(sys.argv)
 
     width = max(int(payload.get("width") or MIN_POPUP_WIDTH), MIN_POPUP_WIDTH)
-    height = max(int(payload.get("height") or MIN_POPUP_HEIGHT), MIN_POPUP_HEIGHT)
     message_id = str(payload.get("message_id") or "").strip()
     verification_code = _displayable_verification_code(
         str(payload.get("verification_code") or "")
     )
+    min_height = 760 if verification_code else MIN_POPUP_HEIGHT
+    height = max(int(payload.get("height") or min_height), min_height)
 
     window = QWidget()
     window.setWindowTitle("Gmail Auto v2")
@@ -126,7 +128,7 @@ def show_popup(payload: dict[str, Any]) -> None:
 
     meta_frame = QFrame()
     meta_frame.setObjectName("metaFrame")
-    meta_frame.setFixedHeight(242 if verification_code else 194)
+    meta_frame.setFixedHeight(232)
     meta_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
     meta_layout = QVBoxLayout(meta_frame)
@@ -150,11 +152,6 @@ def show_popup(payload: dict[str, Any]) -> None:
         ("", TEXT["position"], payload.get("position") or fallback_position, ""),
     ]:
         meta_layout.addLayout(meta_row(icon, label, str(value), link_url=link_url))
-
-    if verification_code:
-        meta_layout.addLayout(
-            meta_row("", TEXT["verification_code"], verification_code)
-        )
 
     action_layout = QHBoxLayout()
     action_layout.setContentsMargins(0, 0, 0, 0)
@@ -209,15 +206,6 @@ def show_popup(payload: dict[str, Any]) -> None:
     action_layout.addWidget(star_button)
     action_buttons.append(star_button)
 
-    if verification_code:
-        copy_code_button = QPushButton(f"\u2398  {TEXT['copy_code']}")
-        copy_code_button.setObjectName("actionButton")
-        copy_code_button.setFixedHeight(48)
-        copy_code_button.clicked.connect(
-            lambda: QApplication.clipboard().setText(verification_code)
-        )
-        action_layout.addWidget(copy_code_button)
-
     summary_card = QFrame()
     summary_card.setObjectName("summaryCard")
     summary_card.setMinimumHeight(112)
@@ -259,6 +247,13 @@ def show_popup(payload: dict[str, Any]) -> None:
     card_layout.addLayout(header_layout)
     card_layout.addWidget(divider())
     card_layout.addWidget(meta_frame)
+    if verification_code:
+        card_layout.addWidget(
+            verification_code_card(
+                verification_code,
+                lambda: QApplication.clipboard().setText(verification_code),
+            )
+        )
     card_layout.addSpacing(4)
     card_layout.addWidget(divider())
     card_layout.addLayout(action_layout)
@@ -316,6 +311,65 @@ def meta_row(icon: str, label: str, value: str, link_url: str = "") -> Any:
     row.addWidget(name_label)
     row.addWidget(value_label, stretch=1)
     return row
+
+
+def verification_code_card(code: str, copy_callback: Callable[[], None]) -> Any:
+    from PyQt5.QtCore import Qt
+    from PyQt5.QtGui import QFont
+    from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+
+    compact_code = re.sub(r"[\s-]+", "", code)
+
+    card = QFrame()
+    card.setObjectName("verificationCodeCard")
+    card.setFixedHeight(126)
+
+    layout = QHBoxLayout(card)
+    layout.setContentsMargins(34, 20, 34, 20)
+    layout.setSpacing(30)
+
+    code_title = QLabel(TEXT["verification_code"])
+    code_title.setObjectName("verificationCodeTitle")
+    code_title.setAlignment(Qt.AlignCenter)
+    code_title.setFont(QFont("Microsoft YaHei UI", 16, QFont.Bold))
+
+    code_value = selectable_label(
+        "  ".join(compact_code),
+        QFont("Microsoft YaHei UI", 28, QFont.Bold),
+        word_wrap=False,
+    )
+    code_value.setObjectName("verificationCodeValue")
+    code_value.setAlignment(Qt.AlignCenter)
+
+    code_layout = QVBoxLayout()
+    code_layout.setContentsMargins(0, 0, 0, 0)
+    code_layout.setSpacing(8)
+    code_layout.addWidget(code_title)
+    code_layout.addWidget(code_value)
+
+    separator = QFrame()
+    separator.setObjectName("verificationCodeSeparator")
+    separator.setFixedWidth(1)
+
+    copy_button = QPushButton(f"\u29c9  {TEXT['copy_code']}")
+    copy_button.setObjectName("copyCodeButton")
+    copy_button.setFixedSize(260, 58)
+    copy_button.clicked.connect(copy_callback)
+
+    copy_hint = QLabel(TEXT["copy_hint"])
+    copy_hint.setObjectName("copyCodeHint")
+    copy_hint.setAlignment(Qt.AlignCenter)
+
+    copy_layout = QVBoxLayout()
+    copy_layout.setContentsMargins(0, 0, 0, 0)
+    copy_layout.setSpacing(8)
+    copy_layout.addWidget(copy_button, alignment=Qt.AlignCenter)
+    copy_layout.addWidget(copy_hint, alignment=Qt.AlignCenter)
+
+    layout.addLayout(code_layout, stretch=1)
+    layout.addWidget(separator)
+    layout.addLayout(copy_layout, stretch=0)
+    return card
 
 
 def divider() -> Any:
@@ -676,6 +730,36 @@ QFrame#divider {
     max-height: 1px;
 }
 
+QFrame#verificationCodeCard {
+    background-color: #ffffff;
+    border: 1px solid #a9c8ff;
+    border-radius: 18px;
+}
+
+QLabel#verificationCodeTitle {
+    color: #123ca8;
+    font-size: 16pt;
+    font-weight: 800;
+}
+
+QLabel#verificationCodeValue {
+    color: #1261e8;
+    font-size: 28pt;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+QFrame#verificationCodeSeparator {
+    border: none;
+    border-left: 1px dashed #a9c8ff;
+    background: transparent;
+}
+
+QLabel#copyCodeHint {
+    color: #74809c;
+    font-size: 12pt;
+}
+
 QFrame#summaryCard {
     background-color: #f8fbff;
     border: 1px solid #e0e8f5;
@@ -751,6 +835,15 @@ QPushButton#deletedButton {
     border: 1px solid #d8dee8;
 }
 
+QPushButton#copyCodeButton {
+    color: #0b6fea;
+    background-color: #ffffff;
+    border: 1px solid #a9c8ff;
+    border-radius: 14px;
+    font-size: 15pt;
+    font-weight: 800;
+}
+
 QPushButton:hover {
     background-color: #f3f7fc;
     border-color: #b9c7dc;
@@ -769,6 +862,11 @@ QPushButton#starredButton:hover {
 QPushButton#dangerButton:hover {
     background-color: #ffe7e4;
     border-color: #f08a7d;
+}
+
+QPushButton#copyCodeButton:hover {
+    background-color: #f2f7ff;
+    border-color: #7fb0ff;
 }
 
 QPushButton:disabled {

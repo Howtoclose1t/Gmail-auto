@@ -1,6 +1,6 @@
 ﻿[project]
 name = "gmail-auto-v2"
-version = "0.1.1"
+version = "2.3.1"
 description = "Local Gmail email classifier and desktop notifier using the Gmail API and Ollama."
 readme = "README.md"
 requires-python = ">=3.10"
